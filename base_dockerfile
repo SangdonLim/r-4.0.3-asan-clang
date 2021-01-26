@@ -1,0 +1,70 @@
+FROM ubuntu:focal
+
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update && apt-get -y install \
+    wget \
+# for configure
+    clang \
+    gfortran \
+    libreadline-dev \
+    xorg-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libpcre2-dev \
+    libcurl4-openssl-dev \
+    texinfo \
+    texlive-latex-recommended \
+    texlive-fonts-extra \
+# for building R
+    make \
+# for capabilities()
+    libc++-dev \
+    libtiff-dev \
+    libcairo2-dev \
+    pandoc \
+    pandoc-citeproc \
+# for X11 virtual device
+    xvfb \
+    xauth \
+    xfonts-base
+
+# download R
+WORKDIR /work
+RUN wget https://cran.r-project.org/src/base/R-4/R-4.0.3.tar.gz && \
+    tar -xf R-4.0.3.tar.gz && \
+    rm R-4.0.3.tar.gz
+
+# configure ASAN environment
+WORKDIR /work/R-4.0.3
+RUN printf '\n\
+CC="clang -fsanitize=address -fno-sanitize=float-divide-by-zero -fno-sanitize=alignment -fno-omit-frame-pointer"\n\
+CXX="clang++ -stdlib=libc++ -fsanitize=address -fno-sanitize=float-divide-by-zero -fno-sanitize=alignment -fno-omit-frame-pointer -frtti"\n\
+CFLAGS="-g -O3 -Wall -pedantic"\n\
+FFLAGS="-g -O2 -mtune=native"\n\
+CXXFLAGS="-g -O3 -Wall -pedantic"\n\
+MAIN_LD="clang++ -fsanitize=undefined,address"\n\
+' >> ./config.site
+ENV ASAN_OPTIONS 'detect_leaks=0:detect_odr_violation=0'
+ENV UBSAN_OPTIONS 'print_stacktrace=1'
+ENV RJAVA_JVM_STACK_WORKAROUND 0
+ENV RGL_USE_NULL true
+ENV R_DONT_USE_TK true
+
+# build R
+RUN ./configure --prefix=/opt/R/4.0.3 --enable-R-shlib --with-x --with-cairo --with-libpng --with-jpeglib --with-libtiff && \
+    make && \
+    make install && \
+    /opt/R/4.0.3/bin/R --version && \
+    ln -s /opt/R/4.0.3/bin/R /usr/local/bin/R && \
+    ln -s /opt/R/4.0.3/bin/Rscript /usr/local/bin/Rscript
+
+# create X11 virtual device script
+RUN printf '\n\
+Xvfb :0 -ac -screen 0 1960x2000x24 &\n\
+' >> /xvfb_init.sh && \
+    chmod a+x /xvfb_init.sh
+ENV DISPLAY :0
+
+# bash
+ENTRYPOINT /xvfb_init.sh && /bin/bash

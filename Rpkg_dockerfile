@@ -1,0 +1,43 @@
+FROM base_image
+
+WORKDIR /work
+RUN mkdir code
+
+RUN apt-get -y install \
+    libc++abi-dev \
+    libssl-dev \
+    libxml2-dev
+
+WORKDIR /work/code
+RUN printf '\n\
+install.packages(\n\
+  c(\n\
+    "BiocManager",\n\
+    "Rcpp",\n\
+    "devtools",\n\
+    "lpSolve",\n\
+    "foreach",\n\
+    "logitnorm",\n\
+    "RcppArmadillo",\n\
+    "rmarkdown",\n\
+    "kableExtra",\n\
+    "progress"\n\
+  ),\n\
+  repos = "http://cran.us.r-project.org"\n\
+)\n\
+BiocManager::install("lpsymphony")\n\
+\n\
+' >> ./packages.R
+
+RUN Rscript ./packages.R
+
+RUN apt-get -y install \
+    git \
+    locales
+
+RUN locale-gen --no-purge en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+ENV LC_ALL en_US.UTF-8
+
+WORKDIR /work
+ENV _R_CHECK_FORCE_SUGGESTS_ FALSE
